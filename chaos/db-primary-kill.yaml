@@ -1,0 +1,15 @@
+# Kill the Postgres primary. CNPG should promote a replica and repoint
+# payments-db-rw within ~10-30s. The app's retries should absorb most of it.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: db-primary-kill
+  namespace: payments
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces: [payments]
+    labelSelectors:
+      cnpg.io/cluster: payments-db
+      cnpg.io/instanceRole: primary

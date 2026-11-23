@@ -1,0 +1,18 @@
+# Kill one app pod every 30s. With 4 replicas, a PDB, readiness gating and a
+# preStop drain, this should be invisible to clients. Delete the Schedule to stop.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: app-pod-kill
+  namespace: payments
+spec:
+  schedule: "@every 30s"
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: PodChaos
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces: [payments]
+      labelSelectors: { app: payments-api }

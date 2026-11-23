@@ -1,0 +1,76 @@
+# Hand-written SLO rules (the other project generates them with Sloth; writing
+# them once by hand is the best way to understand what Sloth produces).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: payments
+  namespace: monitoring
+spec:
+  groups:
+    - name: payments.sli
+      interval: 30s
+      rules:
+        # Error ratio over several windows. SLO: 99.9% of create-payment and
+        # webhook requests succeed  => error budget 0.001.
+        - record: payments:error_ratio:rate5m
+          expr: |
+            sum(rate(http_requests_total{namespace="payments", app="payments-api", route=~"/payments|/webhooks/provider", status=~"5.."}[5m]))
+            / sum(rate(http_requests_total{namespace="payments", app="payments-api", route=~"/payments|/webhooks/provider"}[5m]))
+        - record: payments:error_ratio:rate30m
+          expr: |
+            sum(rate(http_requests_total{namespace="payments", app="payments-api", route=~"/payments|/webhooks/provider", status=~"5.."}[30m]))
+            / sum(rate(http_requests_total{namespace="payments", app="payments-api", route=~"/payments|/webhooks/provider"}[30m]))
+        - record: payments:error_ratio:rate1h
+          expr: |
+            sum(rate(http_requests_total{namespace="payments", app="payments-api", route=~"/payments|/webhooks/provider", status=~"5.."}[1h]))
+            / sum(rate(http_requests_total{namespace="payments", app="payments-api", route=~"/payments|/webhooks/provider"}[1h]))
+        - record: payments:error_ratio:rate6h
+          expr: |
+            sum(rate(http_requests_total{namespace="payments", app="payments-api", route=~"/payments|/webhooks/provider", status=~"5.."}[6h]))
+            / sum(rate(http_requests_total{namespace="payments", app="payments-api", route=~"/payments|/webhooks/provider"}[6h]))
+
+    - name: payments.alerts
+      rules:
+        - alert: PaymentsErrorBudgetFastBurn
+          expr: payments:error_ratio:rate1h > (14.4 * 0.001) and payments:error_ratio:rate5m > (14.4 * 0.001)
+          for: 2m
+          labels: { severity: page }
+          annotations:
+            summary: "payments-api burning error budget at >14.4x (2% of 30d budget per hour)"
+            runbook: docs/runbooks/error-budget-burn.md
+        - alert: PaymentsErrorBudgetSlowBurn
+          expr: payments:error_ratio:rate6h > (6 * 0.001) and payments:error_ratio:rate30m > (6 * 0.001)
+          for: 15m
+          labels: { severity: ticket }
+          annotations:
+            summary: "payments-api burning error budget at >6x"
+            runbook: docs/runbooks/error-budget-burn.md
+
+        - alert: PaymentsDatabaseErrors
+          expr: sum(increase(payments_db_errors_total{namespace="payments"}[5m])) > 5
+          labels: { severity: page }
+          annotations:
+            summary: "payments-api is failing DB calls after retries"
+            runbook: docs/runbooks/database-failover.md
+
+        - alert: PaymentsWebhookSignatureFailures
+          expr: sum(rate(payments_webhook_events_total{namespace="payments", outcome="invalid_signature"}[5m])) > 0.1
+          for: 5m
+          labels: { severity: ticket }
+          annotations:
+            summary: "Webhooks failing signature checks: secret rotated out of sync, or someone is probing the endpoint"
+
+        - alert: PaymentsCanaryAborted
+          expr: max by (name) (rollout_info{namespace="payments", phase="Degraded"}) == 1
+          labels: { severity: ticket }
+          annotations:
+            summary: "Rollout {{ $labels.name }} aborted: canary analysis failed"
+            runbook: docs/runbooks/canary-aborted.md
+
+        - alert: PaymentsDbReplicationLag
+          expr: max(cnpg_pg_replication_lag{namespace="payments"}) > 10
+          for: 5m
+          labels: { severity: ticket }
+          annotations:
+            summary: "A Postgres replica is >10s behind: failover now would lose recent writes"
+            runbook: docs/runbooks/database-failover.md

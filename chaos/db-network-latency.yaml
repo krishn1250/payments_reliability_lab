@@ -1,0 +1,24 @@
+# Add 150ms (±50ms) between the app and Postgres for 5 minutes.
+# Each request does 2-4 round trips, so p95 should cross the 300ms threshold.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: db-network-latency
+  namespace: payments
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces: [payments]
+    labelSelectors: { app: payments-api }
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces: [payments]
+      labelSelectors: { cnpg.io/cluster: payments-db }
+  delay:
+    latency: 150ms
+    jitter: 50ms
+    correlation: "25"
+  duration: 5m

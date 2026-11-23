@@ -1,0 +1,19 @@
+# Scrape pods directly (not Services) so every pod is counted exactly once,
+# and copy the Rollouts pod-template-hash into a "revision" label. Canary
+# analysis filters on the canary's revision; dashboards just sum everything.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: payments-api
+spec:
+  selector:
+    matchLabels: { app: payments-api }
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_app]
+          targetLabel: app
+        - sourceLabels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash]
+          targetLabel: revision

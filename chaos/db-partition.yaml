@@ -1,0 +1,21 @@
+# Cut the app off from Postgres completely for 45s. Longer than the retry
+# budget (~6s), so users see 503s. Afterwards: zero duplicate payments, and
+# the app recovers on its own without restarts (liveness ignores the DB).
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: db-partition
+  namespace: payments
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces: [payments]
+    labelSelectors: { app: payments-api }
+  direction: both
+  target:
+    mode: all
+    selector:
+      namespaces: [payments]
+      labelSelectors: { cnpg.io/cluster: payments-db }
+  duration: 45s

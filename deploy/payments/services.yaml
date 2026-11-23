@@ -1,0 +1,34 @@
+# payments-api:        what clients (the load generator) call. Selects every
+#                      pod, so traffic splits by pod count during a canary.
+# payments-api-stable/canary: Argo Rollouts adds a pod-template-hash selector
+#                      to each, so you can curl one version directly while
+#                      a canary is running.
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-api
+  labels: { app: payments-api }
+spec:
+  selector: { app: payments-api }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-api-stable
+  labels: { app: payments-api }
+spec:
+  selector: { app: payments-api }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-api-canary
+  labels: { app: payments-api }
+spec:
+  selector: { app: payments-api }
+  ports:
+    - { name: http, port: 80, targetPort: http }

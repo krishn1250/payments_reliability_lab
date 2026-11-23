@@ -1,0 +1,10 @@
+# 1 control plane + 3 workers: enough to spread 3 Postgres instances and
+# 4 app pods so node-level failures are meaningful.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: payments-lab
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker
+  - role: worker

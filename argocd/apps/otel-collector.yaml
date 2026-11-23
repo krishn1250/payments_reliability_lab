@@ -1,0 +1,78 @@
+# Apps send every span to the Collector; the Collector decides what to keep
+# once it has seen the whole trace (tail sampling). See ADR 0005.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-collector
+    targetRevision: "0.*"
+    helm:
+      releaseName: otel-collector
+      valuesObject:
+        fullnameOverride: otel-collector
+        mode: deployment
+        replicaCount: 1   # tail sampling needs all spans of a trace on one instance;
+                          # scaling out requires a loadbalancing exporter tier in front
+        image:
+          repository: otel/opentelemetry-collector-contrib
+        resources:
+          requests: { cpu: 50m, memory: 128Mi }
+          limits: { memory: 512Mi }
+        config:
+          receivers:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: ${env:MY_POD_IP}:4317
+                http:
+                  endpoint: ${env:MY_POD_IP}:4318
+          processors:
+            memory_limiter:
+              check_interval: 1s
+              limit_percentage: 80
+              spike_limit_percentage: 25
+            tail_sampling:
+              decision_wait: 10s
+              num_traces: 50000
+              policies:
+                - name: keep-errors
+                  type: status_code
+                  status_code: { status_codes: [ERROR] }
+                - name: keep-slow
+                  type: latency
+                  latency: { threshold_ms: 300 }
+                - name: keep-idempotent-replays
+                  type: boolean_attribute
+                  boolean_attribute: { key: payment.idempotent_replay, value: true }
+                - name: baseline-10pct
+                  type: probabilistic
+                  probabilistic: { sampling_percentage: 10 }
+            batch: {}
+          exporters:
+            otlp/tempo:
+              endpoint: tempo.monitoring.svc:4317
+              tls: { insecure: true }
+          service:
+            pipelines:
+              traces:
+                receivers: [otlp]
+                processors: [memory_limiter, tail_sampling, batch]
+                exporters: [otlp/tempo]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }

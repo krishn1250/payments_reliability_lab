@@ -1,0 +1,33 @@
+# Locks down the app pods. Postgres pods are left to the operator's defaults
+# here because CNPG instances also talk to the API server and each other;
+# see docs/adr/0003-cloudnative-pg.md for the stricter version.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payments-api
+spec:
+  podSelector:
+    matchLabels: { app: payments-api }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: loadgen } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }
+      ports:
+        - { protocol: TCP, port: 8000 }
+  egress:
+    - to:
+        - podSelector: { matchLabels: { cnpg.io/cluster: payments-db } }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    - to:   # traces to the OTel Collector
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: opentelemetry-collector } }
+      ports:
+        - { protocol: TCP, port: 4317 }
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }

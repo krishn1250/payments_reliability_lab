@@ -1,0 +1,35 @@
+# 3-instance Postgres managed by CloudNativePG: 1 primary + 2 streaming replicas.
+# If the primary dies, the operator promotes a replica and repoints the
+# payments-db-rw Service. The app only ever connects to -rw.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: payments-db
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"   # database before the app
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+  primaryUpdateStrategy: unsupervised
+  # Wait at most 30s for a clean shutdown before forcing failover.
+  switchoverDelay: 30
+  failoverDelay: 0
+  bootstrap:
+    initdb:
+      database: payments
+      owner: payments          # CNPG generates the password into Secret payments-db-app
+  postgresql:
+    parameters:
+      max_connections: "100"
+      log_min_duration_statement: "500"   # log slow queries
+  storage:
+    size: 1Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  affinity:
+    topologyKey: kubernetes.io/hostname
+    enablePodAntiAffinity: true
+    podAntiAffinityType: preferred
+  monitoring:
+    enablePodMonitor: true

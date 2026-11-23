@@ -1,0 +1,26 @@
+# Minimal Argo CD for a laptop. UI via port-forward, no ingress, no SSO.
+configs:
+  params:
+    server.insecure: true
+  cm:
+    timeout.reconciliation: 60s
+    # Argo CD no longer computes health for Application resources by default.
+    # Without this, sync waves in the app-of-apps don't wait for the operators
+    # (CRDs) to be healthy before syncing the payments app.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil and obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+      return hs
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  replicas: 1

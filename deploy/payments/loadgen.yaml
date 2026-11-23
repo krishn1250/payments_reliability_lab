@@ -1,0 +1,37 @@
+# Always-on synthetic traffic so canary analysis and SLOs have data.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: loadgen }
+  template:
+    metadata:
+      labels: { app: loadgen }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: k6
+          image: grafana/k6:0.57.0
+          args: ["run", "--quiet", "--no-summary", "/scripts/loadgen.js"]
+          env:
+            - { name: BASE_URL, value: "http://payments-api" }
+            - name: WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef: { name: payments-webhook, key: secret }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: scripts, mountPath: /scripts }
+      volumes:
+        - name: scripts
+          configMap: { name: loadgen-script }
